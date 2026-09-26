@@ -8,7 +8,6 @@ public class InterviewAnalyzerApplication {
 
     public static void main(String[] args) {
         SpringApplication.run(InterviewAnalyzerApplication.class, args);
-        я тупой долбаеб
     }
 
 }
