@@ -43,15 +43,3 @@ docker compose up -d
 ./mvnw spring-boot:run
 
 После старта приложение доступно по адресу: http://localhost:8080
-
----
-
-## 📋 Текущий статус разработки (Roadmap)
-
-- [x] Инициализация проекта на Java 21 и Spring Boot 3.x
-- [x] Настройка Docker Compose и контейнера PostgreSQL
-- [x] Подключение Liquibase и написание стартовых SQL-миграций (V1__init_schema)
-- [x] Настройка CI-пайплайна в GitHub Actions
-- [ ] **[В процессе]** Реализация MediaController для загрузки .mov/.mp4 и интеграция с FFmpeg
-- [ ] Транскрибация и распознавание речи
-- [ ] Модуль AI-аналитики ответов
