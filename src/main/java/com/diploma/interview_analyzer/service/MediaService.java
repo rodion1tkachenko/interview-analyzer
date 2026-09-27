@@ -22,6 +22,7 @@ import java.util.UUID;
 public class MediaService {
 
     private final MediaFileRepository mediaFileRepository;
+    private final AudioExtractionService audioExtractionService;
     private final Path storageLocation = Paths.get("uploads").toAbsolutePath().normalize();
 
     @Transactional
@@ -64,12 +65,15 @@ public class MediaService {
 
         mediaFileRepository.save(entity);
 
+        // Извлекаем аудиодорожку с помощью FFmpeg
+        audioExtractionService.extractAudio(fileId);
+
         return new MediaUploadResponse(
                 fileId,
                 originalFilename,
                 file.getSize(),
                 file.getContentType(),
-                "UPLOADED",
+                "AUDIO_EXTRACTED",
                 now
         );
     }
