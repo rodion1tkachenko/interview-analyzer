@@ -6,14 +6,12 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.time.LocalDateTime;
 
 @Slf4j
 @Service
@@ -21,20 +19,20 @@ import java.time.LocalDateTime;
 public class AudioExtractionService {
 
     private final MediaFileRepository mediaFileRepository;
+    private final MediaStatusService mediaStatusService; // Внедряем Helper
 
     @Async
     public void extractAudioAsync(String mediaFileId) {
-        // Шаг 1: В отдельной короткой транзакции меняем статус на PROCESSING_AUDIO
-        MediaFileEntity mediaFile = updateStatus(mediaFileId, "PROCESSING_AUDIO");
+        // 1. Вызов ДРУГОГО бина через Spring Proxy -> Честная новая транзакция!
+        MediaFileEntity mediaFile = mediaStatusService.updateStatus(mediaFileId, "PROCESSING_AUDIO");
         if (mediaFile == null) {
-            log.error("Failed to find media file with id: {}", mediaFileId);
             return;
         }
 
         Path inputVideoPath = Paths.get(mediaFile.getFilePath());
         if (!Files.exists(inputVideoPath)) {
             log.error("Source video file does not exist on disk: {}", inputVideoPath);
-            updateStatus(mediaFileId, "FAILED");
+            mediaStatusService.updateStatus(mediaFileId, "FAILED");
             return;
         }
 
@@ -42,7 +40,7 @@ public class AudioExtractionService {
         Path outputAudioPath = inputVideoPath.getParent().resolve(outputAudioFilename);
 
         try {
-            // Шаг 2: Вызов FFmpeg (выполняется в фоновом потоке ВНЕ ТРАНЗАКЦИИ БД)
+            // 2. Процесс FFmpeg (выполняется полностью ВНЕ транзакций)
             ProcessBuilder processBuilder = new ProcessBuilder(
                     "ffmpeg",
                     "-y",
@@ -69,24 +67,13 @@ public class AudioExtractionService {
                 throw new RuntimeException("FFmpeg process failed with exit code: " + exitCode);
             }
 
-            // Шаг 3: В новой короткой транзакции фиксируем успешное завершение
-            updateStatus(mediaFileId, "AUDIO_EXTRACTED");
+            // 3. Фиксируем успех в еще одной короткой транзакции
+            mediaStatusService.updateStatus(mediaFileId, "AUDIO_EXTRACTED");
             log.info("Successfully extracted audio for mediaFileId {} to: {}", mediaFileId, outputAudioPath);
 
         } catch (Exception e) {
             log.error("Error during audio extraction for mediaFileId: {}", mediaFileId, e);
-            updateStatus(mediaFileId, "FAILED");
+            mediaStatusService.updateStatus(mediaFileId, "FAILED");
         }
-    }
-
-    @Transactional
-    public MediaFileEntity updateStatus(String mediaFileId, String status) {
-        return mediaFileRepository.findById(mediaFileId)
-                .map(entity -> {
-                    entity.setStatus(status);
-                    entity.setUpdatedAt(LocalDateTime.now());
-                    return mediaFileRepository.save(entity);
-                })
-                .orElse(null);
     }
 }
