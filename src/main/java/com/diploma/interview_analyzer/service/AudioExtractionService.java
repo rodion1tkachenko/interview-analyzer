@@ -4,6 +4,7 @@ import com.diploma.interview_analyzer.entity.MediaFileEntity;
 import com.diploma.interview_analyzer.repository.MediaFileRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -21,36 +22,27 @@ public class AudioExtractionService {
 
     private final MediaFileRepository mediaFileRepository;
 
-    @Transactional
-    public Path extractAudio(String mediaFileId) {
-        MediaFileEntity mediaFile = mediaFileRepository.findById(mediaFileId)
-                .orElseThrow(() -> new IllegalArgumentException("Media file not found: " + mediaFileId));
+    @Async
+    public void extractAudioAsync(String mediaFileId) {
+        // Шаг 1: В отдельной короткой транзакции меняем статус на PROCESSING_AUDIO
+        MediaFileEntity mediaFile = updateStatus(mediaFileId, "PROCESSING_AUDIO");
+        if (mediaFile == null) {
+            log.error("Failed to find media file with id: {}", mediaFileId);
+            return;
+        }
 
         Path inputVideoPath = Paths.get(mediaFile.getFilePath());
         if (!Files.exists(inputVideoPath)) {
-            mediaFile.setStatus("FAILED");
-            mediaFile.setUpdatedAt(LocalDateTime.now());
-            mediaFileRepository.save(mediaFile);
-            throw new IllegalStateException("Source video file does not exist on disk: " + inputVideoPath);
+            log.error("Source video file does not exist on disk: {}", inputVideoPath);
+            updateStatus(mediaFileId, "FAILED");
+            return;
         }
 
-        // Формируем путь для сгенерированного .wav файла
         String outputAudioFilename = mediaFile.getId() + "_extracted.wav";
         Path outputAudioPath = inputVideoPath.getParent().resolve(outputAudioFilename);
 
-        // Меняем статус в БД на PROCESSING_AUDIO
-        mediaFile.setStatus("PROCESSING_AUDIO");
-        mediaFile.setUpdatedAt(LocalDateTime.now());
-        mediaFileRepository.save(mediaFile);
-
         try {
-            // Команда FFmpeg:
-            // -i: входной файл
-            // -vn: отключить видеопоток
-            // -acodec pcm_s16le: 16-битный PCM кодек для WAV
-            // -ar 16000: частота 16 kHz (оптимально для Speech-to-Text / Whisper)
-            // -ac 1: моно-звук
-            // -y: перезаписать выходной файл, если он уже существует
+            // Шаг 2: Вызов FFmpeg (выполняется в фоновом потоке ВНЕ ТРАНЗАКЦИИ БД)
             ProcessBuilder processBuilder = new ProcessBuilder(
                     "ffmpeg",
                     "-y",
@@ -65,7 +57,6 @@ public class AudioExtractionService {
             processBuilder.redirectErrorStream(true);
             Process process = processBuilder.start();
 
-            // Читаем вывод FFmpeg для отладки в логах
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
@@ -78,20 +69,24 @@ public class AudioExtractionService {
                 throw new RuntimeException("FFmpeg process failed with exit code: " + exitCode);
             }
 
-            // Обновляем статус и сохраняем успешный результат в БД
-            mediaFile.setStatus("AUDIO_EXTRACTED");
-            mediaFile.setUpdatedAt(LocalDateTime.now());
-            mediaFileRepository.save(mediaFile);
-
-            log.info("Successfully extracted audio to: {}", outputAudioPath);
-            return outputAudioPath;
+            // Шаг 3: В новой короткой транзакции фиксируем успешное завершение
+            updateStatus(mediaFileId, "AUDIO_EXTRACTED");
+            log.info("Successfully extracted audio for mediaFileId {} to: {}", mediaFileId, outputAudioPath);
 
         } catch (Exception e) {
             log.error("Error during audio extraction for mediaFileId: {}", mediaFileId, e);
-            mediaFile.setStatus("FAILED");
-            mediaFile.setUpdatedAt(LocalDateTime.now());
-            mediaFileRepository.save(mediaFile);
-            throw new RuntimeException("Failed to extract audio", e);
+            updateStatus(mediaFileId, "FAILED");
         }
+    }
+
+    @Transactional
+    public MediaFileEntity updateStatus(String mediaFileId, String status) {
+        return mediaFileRepository.findById(mediaFileId)
+                .map(entity -> {
+                    entity.setStatus(status);
+                    entity.setUpdatedAt(LocalDateTime.now());
+                    return mediaFileRepository.save(entity);
+                })
+                .orElse(null);
     }
 }
