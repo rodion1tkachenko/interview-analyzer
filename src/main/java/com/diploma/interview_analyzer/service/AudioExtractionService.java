@@ -19,11 +19,11 @@ import java.nio.file.Paths;
 public class AudioExtractionService {
 
     private final MediaFileRepository mediaFileRepository;
-    private final MediaStatusService mediaStatusService; // Внедряем Helper
+    private final MediaStatusService mediaStatusService;
+    private final TranscriptionService transcriptionService;
 
     @Async
     public void extractAudioAsync(String mediaFileId) {
-        // 1. Вызов ДРУГОГО бина через Spring Proxy -> Честная новая транзакция!
         MediaFileEntity mediaFile = mediaStatusService.updateStatus(mediaFileId, "PROCESSING_AUDIO");
         if (mediaFile == null) {
             return;
@@ -32,7 +32,7 @@ public class AudioExtractionService {
         Path inputVideoPath = Paths.get(mediaFile.getFilePath());
         if (!Files.exists(inputVideoPath)) {
             log.error("Source video file does not exist on disk: {}", inputVideoPath);
-            mediaStatusService.updateStatus(mediaFileId, "FAILED");
+            mediaStatusService.markFailed(mediaFileId, "Source file not found: " + inputVideoPath);
             return;
         }
 
@@ -40,7 +40,6 @@ public class AudioExtractionService {
         Path outputAudioPath = inputVideoPath.getParent().resolve(outputAudioFilename);
 
         try {
-            // 2. Процесс FFmpeg (выполняется полностью ВНЕ транзакций)
             ProcessBuilder processBuilder = new ProcessBuilder(
                     "ffmpeg",
                     "-y",
@@ -67,13 +66,14 @@ public class AudioExtractionService {
                 throw new RuntimeException("FFmpeg process failed with exit code: " + exitCode);
             }
 
-            // 3. Фиксируем успех в еще одной короткой транзакции
-            mediaStatusService.updateStatus(mediaFileId, "AUDIO_EXTRACTED");
+            mediaStatusService.markAudioExtracted(mediaFileId, outputAudioPath.toString());
             log.info("Successfully extracted audio for mediaFileId {} to: {}", mediaFileId, outputAudioPath);
+
+            transcriptionService.transcribeAsync(mediaFileId);
 
         } catch (Exception e) {
             log.error("Error during audio extraction for mediaFileId: {}", mediaFileId, e);
-            mediaStatusService.updateStatus(mediaFileId, "FAILED");
+            mediaStatusService.markFailed(mediaFileId, e.getMessage());
         }
     }
 }
