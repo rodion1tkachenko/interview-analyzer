@@ -9,7 +9,7 @@ app = FastAPI(title="Interview Analyzer - STT Service")
 # Для M1/M2/M3 Mac ставим compute_type="float16" или "int8" (для экономии памяти)
 # Модель "base" или "small" дает отличный баланс качества и скорости на русском языке.
 print("Загрузка модели Whisper...")
-model = WhisperModel("base", device="cpu", compute_type="int8")
+model = WhisperModel("small", device="cpu", compute_type="int8")
 print("Модель Whisper успешно загружена!")
 
 @app.post("/transcribe")
@@ -22,7 +22,14 @@ async def transcribe_audio(file: UploadFile = File(...)):
             shutil.copyfileobj(file.file, buffer)
 
         # Транскрибируем
-        segments, info = model.transcribe(temp_file_path, language="ru")
+        segments, info = model.transcribe(
+            temp_file_path,
+            language="ru",
+            beam_size=5,
+            vad_filter=True,
+            condition_on_previous_text=False,
+            initial_prompt="Собеседование на IT-позицию. Термины: Kafka, Kubernetes, transactional, Spring, Jenkins, DevOps, Docker, endpoint.",
+        )
 
         # Собираем распознанный текст и сегменты с таймкодами
         result_segments = []
