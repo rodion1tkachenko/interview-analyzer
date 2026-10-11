@@ -24,6 +24,7 @@ REPLACEMENTS = [
     (r"\bка[вф]к\w*", "Kafka"),
     (r"\bкубер[нн]ет[еэи]с\w*", "Kubernetes"),
     (r"\bспринг[\s-]*(майс\w*|бальш\w*|бэтч|батч|бач)", "Spring Batch"),
+    (r"\bspring\s?batch\b", "Spring Batch"),
     (r"\bспринг[\s-]+(бут|бот)\b", "Spring Boot"),
     (r"\bтранзакц?ионал\b", "@Transactional"),
     (r"\bхибер[нн]ейт\w*", "Hibernate"),
@@ -50,7 +51,7 @@ def fix_terms(text: str) -> str:
 
 
 print("Загрузка модели Whisper...")
-model = WhisperModel("small", device="cpu", compute_type="int8")
+model = WhisperModel("large-v3-turbo", device="cpu", compute_type="int8")
 print("Модель Whisper успешно загружена!")
 
 
@@ -74,6 +75,10 @@ def transcribe_audio(file: UploadFile = File(...)):
         result_segments = []
         full_text = []
         for segment in segments:
+            # Галлюцинация: сегмент заканчивается заметно позже конца записи
+            if segment.end > info.duration + 1:
+                continue
+
             text = fix_terms(segment.text.strip())
             full_text.append(text)
             result_segments.append({
