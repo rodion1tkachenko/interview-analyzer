@@ -83,6 +83,7 @@ public class MediaService {
                 originalFilename,
                 file.getSize(),
                 file.getContentType(),
+                //todo: поменять на UPLOADED
                 "PROCESSING_AUDIO",
                 now
         );
