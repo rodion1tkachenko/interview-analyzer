@@ -1,5 +1,6 @@
 package com.diploma.interview_analyzer.controller;
 
+import com.diploma.interview_analyzer.dto.MediaStatusResponse;
 import com.diploma.interview_analyzer.dto.MediaUploadResponse;
 import com.diploma.interview_analyzer.service.MediaService;
 import org.springframework.http.HttpStatus;
@@ -22,5 +23,10 @@ public class MediaController {
     public ResponseEntity<MediaUploadResponse> uploadMedia(@RequestParam("file") MultipartFile file) {
         MediaUploadResponse response = mediaService.saveFile(file);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    @GetMapping("/{id}")
+    public MediaStatusResponse getStatus(@PathVariable String id) {
+        return mediaService.getStatus(id);
     }
 }

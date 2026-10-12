@@ -1,14 +1,17 @@
 package com.diploma.interview_analyzer.service;
 
+import com.diploma.interview_analyzer.dto.MediaStatusResponse;
 import com.diploma.interview_analyzer.dto.MediaUploadResponse;
 import com.diploma.interview_analyzer.entity.MediaFileEntity;
 import com.diploma.interview_analyzer.repository.MediaFileRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -80,8 +83,22 @@ public class MediaService {
                 originalFilename,
                 file.getSize(),
                 file.getContentType(),
+                //todo: поменять на UPLOADED
                 "PROCESSING_AUDIO",
                 now
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public MediaStatusResponse getStatus(String id) {
+        MediaFileEntity entity = mediaFileRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Media file not found: " + id));
+
+        return new MediaStatusResponse(
+                entity.getId(),
+                entity.getStatus(),
+                entity.getTranscript(),
+                entity.getErrorMessage()
         );
     }
 }

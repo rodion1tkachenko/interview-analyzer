@@ -45,4 +45,16 @@ public class MediaFileEntity {
 
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
+    
+    @Column(name = "audio_path")
+    private String audioPath;
+
+    @Column(name = "transcript", columnDefinition = "TEXT")
+    private String transcript;
+
+    @Column(name = "transcript_segments", columnDefinition = "TEXT")
+    private String transcriptSegments; // JSON с таймкодами
+
+    @Column(name = "error_message", columnDefinition = "TEXT")
+    private String errorMessage;
 }
